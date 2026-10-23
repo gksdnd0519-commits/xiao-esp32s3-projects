@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XIAO BLE</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--text:#1d2129;--muted:#6b7280;--on:#f59e0b;--off:#d1d5db;--accent:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--text:#e8eaed;--muted:#9aa0a6;--off:#3a3f4a}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:480px;margin:0 auto;padding:24px 16px}h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:20px}
+.card{background:var(--card);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.label{font-size:15px;color:var(--muted)}.state{font-size:28px;font-weight:700;margin-top:4px}
+.dot{width:56px;height:56px;border-radius:50%;background:var(--off);transition:.15s}
+.dot.on{background:var(--on);box-shadow:0 0 24px var(--on)}
+.btns{display:flex;gap:10px;margin-top:16px}
+button{flex:1;font-size:17px;padding:14px;border:0;border-radius:12px;cursor:pointer;background:var(--off);color:var(--text)}
+button.primary{background:var(--accent);color:#fff}
+button:disabled{opacity:.4}
+.val{color:var(--muted);font-size:13px;margin-top:12px}
+</style></head><body><main>
+<h1>XIAO BLE</h1><div class="sub" id="conn">연결 안 됨</div>
+<div class="card"><button class="primary" id="connectBtn" style="width:100%" onclick="connect()">블루투스로 연결</button></div>
+<div class="card"><div class="row"><div><div class="label">LED</div><div class="state" id="ledText">-</div></div><div class="dot" id="ledDot"></div></div>
+<div class="btns"><button class="primary ctl" onclick="setLed(1)" disabled>켜기</button><button class="ctl" onclick="setLed(0)" disabled>끄기</button></div></div>
+<div class="card"><div class="row"><div><div class="label">터치센서 (D0 핀)</div><div class="state" id="touchText">-</div></div><div class="dot" id="touchDot"></div></div>
+<div class="val" id="touchVal"></div></div>
+</main><script>
+const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const TOUCH = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const LED = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+let ledChar;
+
+if (!navigator.bluetooth) conn.textContent = '이 브라우저는 블루투스를 지원하지 않아요 (안드로이드 크롬을 쓰세요)';
+
+function showLed(on){ ledText.textContent = on ? '켜짐' : '꺼짐'; ledDot.classList.toggle('on', on); }
+function showTouch(text){
+  const [value, t] = text.split(',');
+  touchText.textContent = t === '1' ? '터치됨' : '안 됨'; touchDot.classList.toggle('on', t === '1');
+  touchVal.textContent = '측정값 ' + value;
+}
+function setControls(on){ document.querySelectorAll('.ctl').forEach(b => b.disabled = !on); }
+
+async function connect(){
+  try {
+    conn.textContent = '찾는 중…';
+    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE] }] });
+    device.addEventListener('gattserverdisconnected', () => { conn.textContent = '연결 끊김'; setControls(false); });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE);
+    ledChar = await service.getCharacteristic(LED);
+    const touchChar = await service.getCharacteristic(TOUCH);
+    const dec = new TextDecoder();
+    touchChar.addEventListener('characteristicvaluechanged', e => showTouch(dec.decode(e.target.value)));
+    await touchChar.startNotifications();
+    showLed(dec.decode(await ledChar.readValue()) === '1');
+    conn.textContent = '연결됨 (' + device.name + ')';
+    setControls(true);
+  } catch (e) { conn.textContent = '연결 실패: ' + e.message; }
+}
+async function setLed(on){
+  await ledChar.writeValue(new TextEncoder().encode(on ? '1' : '0'));
+  showLed(!!on);
+}
+</script></body></html>
